@@ -1,0 +1,60 @@
+api:
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  web:
+    address: ":8000"
+  websecure:
+    address: ":8443"
+  traefik:
+    address: ":8080"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: veritasai_net
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+log:
+  level: INFO
+
+accessLog:
+  filePath: /var/log/traefik/access.log
+  bufferingSize: 100
+
+http:
+  middlewares:
+    cors-headers:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - "*"
+        accessControlAllowOriginList:
+          - "http://localhost:3000"
+          - "http://localhost"
+        accessControlMaxAge: 100
+        addVaryHeader: true
+        accessControlAllowCredentials: true
+    
+    rate-limit:
+      rateLimit:
+        average: 100
+        period: 1m
+        burst: 50
+
+    secure-headers:
+      headers:
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "same-origin"

@@ -1,0 +1,241 @@
+# ── Veritas – Production Compose ──────────────────────────────────────────────
+# All services built from Dockerfiles.  No source volume mounts.
+# Only the frontend (port 80) and MinIO console (port 9001) are exposed.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up --build -d
+#   docker compose -f docker-compose.prod.yml down
+
+name: veritas-prod
+
+networks:
+  veritas_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
+  kafka_data:
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: veritas_postgres
+    restart: always
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB:-veritas_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - veritas_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka (KRaft) ─────────────────────────────────────────────────────────────
+  kafka:
+    image: bitnami/kafka:3.9
+    container_name: veritas_kafka
+    restart: always
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - veritas_net
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── MinIO ─────────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: veritas_minio
+    restart: always
+    ports:
+      - "9001:9001"   # Console only – S3 API is internal
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - veritas_net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Auth Service ─────────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context:    ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: veritas_auth
+    restart: always
+    environment:
+      DEBUG: "false"
+      DATABASE_URL:    "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-veritas_db}"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MINIO_ENDPOINT:  "minio:9000"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      JWT_SECRET:       ${JWT_SECRET}
+      JWT_ALGORITHM:    HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      REFRESH_TOKEN_EXPIRE_DAYS:   "30"
+      FRONTEND_URL: ${FRONTEND_URL}
+      # Google OAuth
+      GOOGLE_CLIENT_ID:     ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI:  ${GOOGLE_REDIRECT_URI}
+      # Stripe
+      STRIPE_SECRET_KEY:          ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY:     ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET:      ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_PRO_PRICE_ID:        ${STRIPE_PRO_PRICE_ID}
+      STRIPE_ENTERPRISE_PRICE_ID: ${STRIPE_ENTERPRISE_PRICE_ID}
+      # Quotas
+      FREE_DAILY_LIMIT:       ${FREE_DAILY_LIMIT:-10}
+      FREE_MAX_CHARS:         ${FREE_MAX_CHARS:-2000}
+      PRO_DAILY_LIMIT:        ${PRO_DAILY_LIMIT:-500}
+      PRO_MAX_CHARS:          ${PRO_MAX_CHARS:-10000}
+      ENTERPRISE_DAILY_LIMIT: ${ENTERPRISE_DAILY_LIMIT:-0}
+      ENTERPRISE_MAX_CHARS:   ${ENTERPRISE_MAX_CHARS:-50000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - veritas_net
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: veritas_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - veritas_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Document Service ──────────────────────────────────────────────────────────
+  document-service:
+    build:
+      context:    ./services/document-service
+      dockerfile: Dockerfile
+    container_name: veritas_document
+    restart: always
+    environment:
+      DEBUG: "false"
+      DATABASE_URL:    "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-veritas_db}"
+      REDIS_URL:       "redis://redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MINIO_ENDPOINT:  "minio:9000"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET:    "veritasai-documents"
+      MINIO_SECURE:    "false"
+      JWT_SECRET:       ${JWT_SECRET}
+      JWT_ALGORITHM:    HS256
+      AUTH_GRPC_HOST:  "auth-service"
+      AUTH_GRPC_PORT:  "50051"
+      AI_GRPC_HOST:    "ai-service"
+      AI_GRPC_PORT:    "50052"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - veritas_net
+
+  # ── AI Service ────────────────────────────────────────────────────────────────
+  ai-service:
+    build:
+      context:    ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: veritas_ai
+    restart: always
+    environment:
+      DEBUG: "false"
+      REDIS_URL:       "redis://redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MODELS_DIR:      "/app/models"
+      AUTH_GRPC_HOST:  "auth-service"
+      AUTH_GRPC_PORT:  "50051"
+    volumes:
+      # Bind mount for model files - map external models directory to container
+      - ${MODELS_DIR:-/opt/veritas/models}:/app/models:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - veritas_net
+
+  # ── Analytics Service ─────────────────────────────────────────────────────────
+  analytics-service:
+    build:
+      context:    ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: veritas_analytics
+    restart: always
+    environment:
+      DEBUG: "false"
+      DATABASE_URL:    "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-veritas_db}"
+      REDIS_URL:       "redis://redis:6379/1"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - veritas_net
+
+  # ── Frontend (Nginx + built React app) ───────────────────────────────────────
+  frontend:
+    build:
+      context:    ../main_app
+      dockerfile: Dockerfile
+    container_name: veritas_frontend
+    restart: always
+    ports:
+      - "80:80"
+    environment:
+      AUTH_SERVICE_URL: "http://auth-service:8001"
+    depends_on:
+      - auth-service
+    networks:
+      - veritas_net

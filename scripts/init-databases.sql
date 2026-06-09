@@ -1,0 +1,4 @@
+-- Veritas – initial database setup
+-- PostgreSQL runs as POSTGRES_DB (veritas_db) which is the main auth database.
+-- The auth-service Peewee ORM creates tables automatically on startup.
+-- Nothing additional needs to be created here unless you add more services.

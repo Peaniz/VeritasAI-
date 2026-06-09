@@ -1,0 +1,74 @@
+syntax = "proto3";
+package detection;
+
+import "common.proto";
+
+service DetectionService {
+  rpc Analyze (AnalyzeRequest) returns (AnalyzeResponse);
+  rpc AnalyzeBatch (AnalyzeBatchRequest) returns (AnalyzeBatchResponse);
+  rpc GetAvailableModels (common.Empty) returns (ModelsResponse);
+}
+
+message AnalyzeRequest {
+  string text = 1;
+  string model_name = 2;       // optional, defaults to distilbert-base-uncased
+  string document_id = 3;      // optional, for async callback
+}
+
+message HighlightSpan {
+  int32 start = 1;
+  int32 end = 2;
+  string risk_level = 3;       // high | medium | low
+  string sentence = 4;
+  float ai_probability = 5;
+  repeated string reasons = 6;
+}
+
+message LinguisticFeatures {
+  float burstiness = 1;
+  float ttr = 2;
+  float bigram_rep_rate = 3;
+  float word_entropy = 4;
+  float func_word_ratio = 5;
+  float sent_len_variation = 6;
+  float punct_density = 7;
+  float avg_word_len = 8;
+  float mean_sent_len = 9;
+  float std_sent_len = 10;
+  int32 num_sentences = 11;
+  int32 word_count = 12;
+  int32 char_count = 13;
+}
+
+message AnalyzeResponse {
+  string label = 1;                      // ai | human
+  float ai_probability = 2;
+  float human_probability = 3;
+  float confidence = 4;
+  float threshold = 5;
+  string model_name = 6;
+  LinguisticFeatures linguistic_features = 7;
+  repeated HighlightSpan highlight_spans = 8;
+  float inference_time_ms = 9;
+}
+
+message AnalyzeBatchRequest {
+  repeated string texts = 1;
+  string model_name = 2;
+}
+
+message AnalyzeBatchResponse {
+  repeated AnalyzeResponse results = 1;
+}
+
+message ModelInfo {
+  string name = 1;
+  bool available = 2;
+  string description = 3;
+  float f1_score = 4;
+}
+
+message ModelsResponse {
+  repeated ModelInfo models = 1;
+  string default_model = 2;
+}

@@ -1,0 +1,16 @@
+syntax = "proto3";
+package common;
+
+message Empty {}
+
+message Pagination {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message PaginatedMeta {
+  int32 total = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  int32 total_pages = 4;
+}

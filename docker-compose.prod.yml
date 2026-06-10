@@ -41,7 +41,7 @@ services:
 
   # ── Kafka (KRaft) ─────────────────────────────────────────────────────────────
   kafka:
-    image: bitnami/kafka:3.9
+    image: bitnami/kafka:latest
     container_name: veritas_kafka
     restart: always
     environment:

@@ -30,7 +30,7 @@ services:
       POSTGRES_DB:       ${POSTGRES_DB:-veritas_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - veritas_net
     healthcheck:
@@ -57,6 +57,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
     volumes:
       - kafka_data:/var/lib/kafka/data
     networks:
@@ -196,14 +197,14 @@ services:
       AUTH_GRPC_PORT:  "50051"
     volumes:
       # Bind mount for model files - map external models directory to container
-      - ${MODELS_DIR:-/opt/veritas/models}:/app/models:ro
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - ${MODELS_DIR:-/opt/veritasai/models}:/app/models:ro
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
     depends_on:
       kafka:
         condition: service_healthy

@@ -317,9 +317,9 @@ class AIDetectionPipeline:
             ai_prob, _ = model.predict_proba(cleaned)
             local_feat = compute_linguistic_features(cleaned)
 
-            if ai_prob >= 0.75:
+            if ai_prob >= 0.80:
                 level = "high"
-            elif ai_prob >= 0.35:
+            elif ai_prob >= 0.55:
                 level = "medium"
             else:
                 level = "low"

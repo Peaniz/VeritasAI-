@@ -1,6 +1,5 @@
 import peewee as pw
 from src.settings import settings
-from src.entities.user import User, RefreshToken, GoogleOAuthState
 import structlog
 
 log = structlog.get_logger()
@@ -24,6 +23,7 @@ def _run_migrations(db: pw.PostgresqlDatabase) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_status VARCHAR(32)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS analyses_today INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS analyses_reset_date DATE DEFAULT CURRENT_DATE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences TEXT DEFAULT '{\"default_model\": \"distilbert-base-uncased\", \"auto_save\": true, \"language\": \"en\"}'",
         # Allow password_hash to be NULL (Google-only accounts)
         "ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL",
         # Unique indexes (CREATE UNIQUE INDEX IF NOT EXISTS is safe to re-run)
@@ -58,6 +58,7 @@ def init_db() -> pw.PostgresqlDatabase:
     _run_migrations(db)
 
     # Step 2: Create new tables (safe=True skips existing ones)
+    from src.entities.user import User, RefreshToken, GoogleOAuthState
     db.create_tables([User, RefreshToken, GoogleOAuthState], safe=True)
 
     log.info("database_initialized")

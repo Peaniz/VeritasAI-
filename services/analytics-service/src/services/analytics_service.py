@@ -84,3 +84,37 @@ class AnalyticsService:
             "avg_ai_score": round(avg_score, 4),
             "trend": trend,
         }
+
+    def get_system_overview(self) -> dict:
+        today = date.today()
+        last_30 = today - timedelta(days=30)
+
+        all_stats = list(DailyStat.select().where(DailyStat.date >= last_30))
+
+        total_scans = sum(s.scan_count for s in all_stats)
+        total_ai = sum(s.ai_count for s in all_stats)
+        total_human = sum(s.human_count for s in all_stats)
+        active_users = len(set(str(s.user_id) for s in all_stats))
+        total_chars = sum(s.total_chars for s in all_stats)
+
+        # Aggregate trend by date across all users
+        by_date: dict = {}
+        for s in all_stats:
+            d = str(s.date)
+            if d not in by_date:
+                by_date[d] = {"date": d, "scan_count": 0, "ai_count": 0, "human_count": 0}
+            by_date[d]["scan_count"] += s.scan_count
+            by_date[d]["ai_count"] += s.ai_count
+            by_date[d]["human_count"] += s.human_count
+
+        trend = sorted(by_date.values(), key=lambda x: x["date"])
+
+        return {
+            "total_scans_30d": total_scans,
+            "total_ai_30d": total_ai,
+            "total_human_30d": total_human,
+            "ai_ratio_30d": round(total_ai / total_scans, 4) if total_scans > 0 else 0.0,
+            "active_users_30d": active_users,
+            "total_chars_30d": total_chars,
+            "trend": trend,
+        }

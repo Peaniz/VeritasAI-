@@ -54,6 +54,7 @@ class KafkaWorker:
 
     def _handle_document_created(self, event: dict) -> None:
         doc_id = event.get("document_id")
+        user_id = event.get("user_id")
         text = event.get("content", "")
         model_name = event.get("model_name", settings.default_model)
 
@@ -70,6 +71,7 @@ class KafkaWorker:
 
         payload = {
             "document_id": doc_id,
+            "user_id": user_id,
             "label": result["label"],
             "ai_probability": result["ai_probability"],
             "human_probability": result["human_probability"],

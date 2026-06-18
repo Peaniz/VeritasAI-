@@ -16,5 +16,8 @@ class Settings(BaseSettings):
 
     grpc_port: int = 50054
 
+    jwt_secret: str = "super_secret_jwt_key_change_in_production_32chars"
+    jwt_algorithm: str = "HS256"
+
 
 settings = Settings()

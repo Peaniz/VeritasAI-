@@ -19,6 +19,7 @@ class UserOut(BaseModel):
     has_google: bool = False      # True if Google OAuth linked
     analyses_today: int = 0
     created_at: str
+    preferences: str | None = None
 
 
 class RegisterResponse(BaseModel):

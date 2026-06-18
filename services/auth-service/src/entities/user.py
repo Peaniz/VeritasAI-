@@ -36,6 +36,7 @@ class User(BaseModel):
     # ── Usage Quota ──────────────────────────────────────────────────────
     analyses_today = pw.IntegerField(default=0)
     analyses_reset_date = pw.DateField(default=datetime.date.today)
+    preferences = pw.TextField(default='{"default_model": "distilbert-base-uncased", "auto_save": true, "language": "en"}')
 
     class Meta:
         table_name = "users"

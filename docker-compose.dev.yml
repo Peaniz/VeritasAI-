@@ -73,6 +73,25 @@ services:
       timeout: 10s
       retries: 5
 
+  # ── Kafka topic initializer (runs once after Kafka is healthy) ───────────────
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: veritas_kafka_init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - veritas_net
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic document.created   --partitions 1 --replication-factor 1 &&
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic analysis.completed --partitions 1 --replication-factor 1 &&
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic user.registered   --partitions 1 --replication-factor 1 &&
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic user.login        --partitions 1 --replication-factor 1 &&
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic usage.tracked     --partitions 1 --replication-factor 1 &&
+       echo 'All Kafka topics created.'"
+    restart: "no"
+
   # ── MinIO (S3-compatible object storage) ─────────────────────────────────────
   minio:
     image: minio/minio:latest

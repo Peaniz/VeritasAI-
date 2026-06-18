@@ -6,6 +6,7 @@ from src.lib.db.peewee import init_db
 from src.routes.auth_route import router as auth_router
 from src.routes.google_oauth_route import router as google_oauth_router
 from src.routes.billing_route import router as billing_router
+from src.routes.admin_route import router as admin_router
 import structlog
 
 log = structlog.get_logger()
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(google_oauth_router)   # /auth/google, /auth/google/callback
     app.include_router(billing_router)        # /billing/*
+    app.include_router(admin_router)          # /auth/admin/*
 
     @app.get("/health")
     def health():

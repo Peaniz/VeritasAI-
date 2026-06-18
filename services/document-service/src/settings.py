@@ -31,5 +31,7 @@ class Settings(BaseSettings):
 
     grpc_port: int = 50053
 
+    auth_service_url: str = "http://localhost:8001"
+
 
 settings = Settings()

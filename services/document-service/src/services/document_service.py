@@ -1,3 +1,4 @@
+import io
 import json
 import urllib.parse
 import peewee as pw
@@ -53,8 +54,37 @@ class DocumentService:
             word_count=len(words),
             status="pending",
         )
+        # Upload raw text to MinIO for durable storage
+        try:
+            file_key = f"{user_id}/{doc.id}.txt"
+            data = content.encode("utf-8")
+            self._minio.put_object(
+                settings.minio_bucket,
+                file_key,
+                io.BytesIO(data),
+                length=len(data),
+                content_type="text/plain; charset=utf-8",
+            )
+            doc.file_key = file_key
+            doc.save()
+        except S3Error as exc:
+            log.warning("minio_upload_failed", doc_id=str(doc.id), error=str(exc))
+
         log.info("document_created", doc_id=str(doc.id))
         return doc
+
+    def delete_document(self, doc_id: str, user_id: str) -> bool:
+        doc = Document.get_or_none((Document.id == doc_id) & (Document.user_id == user_id))
+        if not doc:
+            return False
+        if doc.file_key:
+            try:
+                self._minio.remove_object(settings.minio_bucket, doc.file_key)
+            except S3Error as exc:
+                log.warning("minio_delete_failed", doc_id=doc_id, error=str(exc))
+        doc.delete_instance(recursive=True)
+        log.info("document_deleted", doc_id=doc_id)
+        return True
 
     def get_document(self, doc_id: str, user_id: str | None = None) -> Document | None:
         q = Document.select().where(Document.id == doc_id)

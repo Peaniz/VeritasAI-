@@ -1,15 +1,42 @@
 import json
 import math
+import urllib.request
+import urllib.error
 from fastapi import APIRouter, HTTPException, Header, status, Query
 from src.dtos.document.req import CreateDocumentRequest
 from src.dtos.document.res import DocumentOut, DocumentDetailOut, PaginatedDocuments, AnalysisResultOut
 from src.services.document_service import DocumentService
 from src.lib.event_bus.kafka.producer import get_producer
+from src.settings import settings
 import structlog
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/documents", tags=["documents"])
 doc_svc = DocumentService()
+
+
+def _check_quota(user_id: str, char_count: int):
+    """Call auth-service to verify + increment quota. Raises HTTPException on violation."""
+    payload = json.dumps({"user_id": user_id, "char_count": char_count}).encode()
+    req = urllib.request.Request(
+        f"{settings.auth_service_url}/auth/internal/quota-consume",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")
+        try:
+            detail = json.loads(body).get("detail", body)
+        except Exception:
+            detail = body
+        raise HTTPException(status_code=exc.code, detail=detail)
+    except Exception as exc:
+        log.warning("quota_check_failed", error=str(exc))
+        # Fail open: allow the request if auth-service is unreachable
 
 
 def _doc_out(doc) -> DocumentOut:
@@ -45,6 +72,9 @@ def _analysis_out(ar) -> AnalysisResultOut:
 
 @router.post("/", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
 def create_document(body: CreateDocumentRequest):
+    # Enforce quota before creating document (raises 400/429 on violation)
+    _check_quota(body.user_id, len(body.content))
+
     doc = doc_svc.create_document(
         user_id=body.user_id,
         title=body.title,
@@ -61,6 +91,7 @@ def create_document(body: CreateDocumentRequest):
             "user_id": str(doc.user_id),
             "content": body.content,
             "title": body.title,
+            "model_name": body.model_name,
         },
     )
     return _doc_out(doc)
@@ -93,3 +124,10 @@ def get_document(doc_id: str, user_id: str = Query(...)):
         document=_doc_out(doc),
         analysis=_analysis_out(ar) if ar else None,
     )
+
+
+@router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(doc_id: str, user_id: str = Query(...)):
+    deleted = doc_svc.delete_document(doc_id, user_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")

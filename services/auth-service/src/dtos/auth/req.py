@@ -41,3 +41,8 @@ class UpdateProfileRequest(BaseModel):
         if len(v) < 2:
             raise ValueError("Full name must be at least 2 characters")
         return v
+
+
+class UpdatePreferencesRequest(BaseModel):
+    preferences: str
+
